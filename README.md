@@ -8,6 +8,46 @@
 
 A Rust-based Model Context Protocol (MCP) server that provides AI assistants with powerful RAG (Retrieval-Augmented Generation) capabilities for understanding massive codebases.
 
+> **This is a fork of [Brainwires/project-rag](https://github.com/Brainwires/project-rag).** See [Fork notes](#fork-notes) for a summary of how and why this fork diverges from upstream.
+
+## Fork notes
+
+This fork contains two categories of change.
+
+### Design decisions (intentionally diverge from upstream)
+
+**1. Default embedding model: `jinaai/jina-embeddings-v2-base-code` (768d)**
+
+Upstream default: `all-MiniLM-L6-v2` (384d, general-purpose).
+
+MiniLM produced scores of 0.014-0.016 with no meaningful discrimination between relevant and irrelevant results during code search quality testing. `jina-embeddings-v2-base-code` is trained on code and produces cosine scores in the 0.44-0.60 range with real semantic ranking. The model is multilingual and handles mixed code/prose well.
+
+**Consequence:** This is a breaking change relative to upstream. Indexes built with the upstream default are incompatible (384d vs 768d LanceDB schema). A full re-index is required when switching.
+
+**2. Explicit CUDA ExecutionProvider registration**
+
+The ONNX Runtime CUDA execution provider is now registered explicitly. Upstream relied on the default `error_on_failure=false` behavior, which caused silent CPU fallback with no log output. GPU acceleration on a test machine reduced embedding time from ~62s to ~28s for a 2128-chunk codebase.
+
+### Bug fixes (submitted upstream as PRs)
+
+**3. Tracing logs redirected from stdout to stderr**
+
+Upstream initialized tracing with `tracing_subscriber::fmt::init()`, which writes to stdout. Since `project-rag serve` communicates over MCP stdio, stdout is reserved for the JSON-RPC stream. Log lines on stdout caused `JSONRPCMessage` parse failures on the client side, resulting in tool calls silently returning zero results.
+
+Fix: `tracing_subscriber::fmt().with_writer(std::io::stderr).init()`.
+
+Upstream PR: [Brainwires/project-rag#20](https://github.com/Brainwires/project-rag/pull/20)
+
+**4. File exclusion patterns use globset instead of substring matching**
+
+Upstream `matches_patterns()` used `path_str.contains(pattern)`, so a pattern like `**/vendor/**` was treated as a literal substring and never matched any path. The `globset` crate was already a dependency; the fix compiles patterns into a `GlobSet` and matches them against the path relative to the walk root.
+
+Fix: patterns are compiled with `GlobSetBuilder` on `with_patterns()` and matched via `GlobSet::is_match(relative_path)`.
+
+Upstream PR: [Brainwires/project-rag#21](https://github.com/Brainwires/project-rag/pull/21)
+
+---
+
 ## Overview
 
 This MCP server enables AI assistants to efficiently search and understand large projects by:

@@ -138,7 +138,7 @@ fn default_collection_name() -> String {
 }
 
 fn default_model_name() -> String {
-    "all-MiniLM-L6-v2".to_string()
+    "jinaai/jina-embeddings-v2-base-code".to_string()
 }
 
 fn default_batch_size() -> usize {
@@ -168,11 +168,12 @@ fn default_max_file_size() -> usize {
 
 fn default_exclude_patterns() -> Vec<String> {
     vec![
-        "target".to_string(),
-        "node_modules".to_string(),
-        ".git".to_string(),
-        "dist".to_string(),
-        "build".to_string(),
+        "**/target/**".to_string(),
+        "**/node_modules/**".to_string(),
+        "**/.git/**".to_string(),
+        "**/dist/**".to_string(),
+        "**/build/**".to_string(),
+        "**/vendor/**".to_string(),
     ]
 }
 

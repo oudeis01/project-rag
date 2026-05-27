@@ -24,8 +24,9 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt::init();
+    // Initialize tracing. Write to stderr: stdout is reserved for the MCP JSON-RPC
+    // stream, and log lines on stdout corrupt the protocol.
+    tracing_subscriber::fmt().with_writer(std::io::stderr).init();
 
     // Parse CLI arguments
     let cli = Cli::parse();
@@ -89,8 +90,8 @@ fn show_version_info() {
 
     // Embedding model information
     println!("Embedding Model:");
-    println!("  Model:           all-MiniLM-L6-v2");
-    println!("  Dimensions:      384");
+    println!("  Model:           jinaai/jina-embeddings-v2-base-code (default)");
+    println!("  Dimensions:      768");
     println!("  Provider:        FastEmbed (local, no API calls)");
     println!();
 

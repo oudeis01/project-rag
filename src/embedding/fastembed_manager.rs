@@ -1,6 +1,7 @@
 use super::EmbeddingProvider;
 use anyhow::{Context, Result};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use ort::execution_providers::CUDAExecutionProvider;
 use std::sync::RwLock;
 
 /// FastEmbed-based embedding provider using all-MiniLM-L6-v2
@@ -9,6 +10,7 @@ use std::sync::RwLock;
 pub struct FastEmbedManager {
     model: RwLock<TextEmbedding>,
     dimension: usize,
+    name: String,
 }
 
 impl FastEmbedManager {
@@ -24,6 +26,9 @@ impl FastEmbedManager {
             "all-MiniLM-L12-v2" => EmbeddingModel::AllMiniLML12V2,
             "BAAI/bge-base-en-v1.5" => EmbeddingModel::BGEBaseENV15,
             "BAAI/bge-small-en-v1.5" => EmbeddingModel::BGESmallENV15,
+            "jinaai/jina-embeddings-v2-base-code" | "jina-v2-base-code" => {
+                EmbeddingModel::JinaEmbeddingsV2BaseCode
+            }
             _ => {
                 tracing::warn!(
                     "Unknown model '{}', falling back to all-MiniLM-L6-v2",
@@ -45,12 +50,27 @@ impl FastEmbedManager {
             EmbeddingModel::AllMiniLML12V2 => 384,
             EmbeddingModel::BGEBaseENV15 => 768,
             EmbeddingModel::BGESmallENV15 => 384,
+            EmbeddingModel::JinaEmbeddingsV2BaseCode => 768,
             _ => 384, // Default to 384 for unknown models
         };
+
+        // Canonical name so model_name() reflects the actual model, not a hardcoded value.
+        let name = match model {
+            EmbeddingModel::AllMiniLML6V2 => "all-MiniLM-L6-v2",
+            EmbeddingModel::AllMiniLML12V2 => "all-MiniLM-L12-v2",
+            EmbeddingModel::BGEBaseENV15 => "BAAI/bge-base-en-v1.5",
+            EmbeddingModel::BGESmallENV15 => "BAAI/bge-small-en-v1.5",
+            EmbeddingModel::JinaEmbeddingsV2BaseCode => "jinaai/jina-embeddings-v2-base-code",
+            _ => "all-MiniLM-L6-v2",
+        }
+        .to_string();
 
         let mut options = InitOptions::default();
         options.model_name = model;
         options.show_download_progress = true;
+        // Prefer CUDA; ort falls through to the CPU EP automatically if CUDA registration fails,
+        // so the binary still runs on machines without a GPU.
+        options.execution_providers = vec![CUDAExecutionProvider::default().build()];
 
         let embedding_model =
             TextEmbedding::try_new(options).context("Failed to initialize FastEmbed model")?;
@@ -58,6 +78,7 @@ impl FastEmbedManager {
         Ok(Self {
             model: RwLock::new(embedding_model),
             dimension,
+            name,
         })
     }
 }
@@ -92,7 +113,7 @@ impl EmbeddingProvider for FastEmbedManager {
     }
 
     fn model_name(&self) -> &str {
-        "all-MiniLM-L6-v2"
+        &self.name
     }
 }
 
@@ -182,5 +203,13 @@ mod tests {
     fn test_with_model_bge_small() {
         let manager = FastEmbedManager::with_model(EmbeddingModel::BGESmallENV15).unwrap();
         assert_eq!(manager.dimension(), 384);
+    }
+
+    #[test]
+    fn test_from_model_name_jina_code() {
+        let manager =
+            FastEmbedManager::from_model_name("jinaai/jina-embeddings-v2-base-code").unwrap();
+        assert_eq!(manager.dimension(), 768);
+        assert_eq!(manager.model_name(), "jinaai/jina-embeddings-v2-base-code");
     }
 }
